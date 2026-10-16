@@ -1,0 +1,32 @@
+import {test,expect} from '@playwright/test';
+test('personal records persist and remain isolated by date',async({page})=>{
+ await page.goto('/');
+ await page.getByRole('textbox',{name:'新任务'}).fill('练习英语二十分钟');
+ await page.getByRole('button',{name:'添加',exact:true}).click();
+ await page.getByRole('button',{name:'完成 练习英语二十分钟',exact:true}).click();
+ await page.getByRole('button',{name:'学一点英语',exact:false}).click();
+ await page.getByRole('button',{name:'开心',exact:true}).click();
+ await page.locator('textarea').fill('今天开始认真记录生活。');
+ await page.getByRole('button',{name:'保存日记'}).click();
+ await page.reload();
+ await expect(page.locator('textarea')).toHaveValue('今天开始认真记录生活。');
+ await expect(page.getByRole('button',{name:'取消完成 练习英语二十分钟'})).toBeVisible();
+ await expect(page.getByRole('button',{name:'学一点英语',exact:false})).toContainText('今天已完成');
+ await page.getByRole('button',{name:'记账本',exact:false}).click();
+ await page.getByRole('spinbutton',{name:'金额'}).fill('28.50');
+ await page.getByRole('textbox',{name:'备注'}).fill('午餐');
+ await page.getByRole('button',{name:'记一笔'}).click();
+ await expect(page.locator('.transaction')).toContainText('28.50');
+ await page.locator('#date').fill('2025-01-01');
+ await expect(page.locator('.transaction')).toHaveCount(0);
+ await page.getByRole('button',{name:'日历回顾',exact:false}).click();
+ await expect(page.locator('.calendar button')).toHaveCount(31);
+});
+test('mobile layout fits and user text is escaped',async({page})=>{
+ await page.setViewportSize({width:390,height:844});await page.goto('/');
+ await page.getByRole('textbox',{name:'新任务'}).fill('<img src=x onerror=alert(1)>');
+ await page.getByRole('button',{name:'添加',exact:true}).click();
+ await expect(page.locator('.task')).toContainText('<img');
+ await expect(page.locator('.task img')).toHaveCount(0);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
