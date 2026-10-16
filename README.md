@@ -14,13 +14,13 @@ npx playwright install chromium
 npm test
 ```
 
-首次使用无演示数据，记录默认保存在当前浏览器的 localStorage。清除网站数据会删除记录，请在“我的小天地”定期导出备份。未连接 Supabase 时没有跨设备同步。部署时应使用 HTTPS；iPhone Safari 可通过分享菜单添加到主屏幕。当前没有离线缓存或系统推送提醒。
+首次使用无演示数据，记录默认保存在当前浏览器的 localStorage。清除网站数据会删除记录，请在“我的小天地”定期导出备份。项目默认包含个人 Supabase 项目的公开连接配置（`cloud-config.js`），因此部署时未设置环境变量也会显示登录入口。登录后的同步仍需可用的云端账户和表权限。部署时应使用 HTTPS；iPhone Safari 可通过分享菜单添加到主屏幕。当前没有离线缓存或系统推送提醒。
 
-## 可选：启用私人云端同步
+## 私人云端同步配置
 
 1. 创建自己的 Supabase 项目，在 SQL Editor 执行 `supabase.sql`，启用逐用户的行级权限。
 2. 在 Authentication 设置关闭新用户注册，然后在用户管理中手动创建个人邮箱和密码账户。
-3. 将 `.env.example` 复制为 `.env.local`，填入项目 URL 和公开 anon key。切勿填入 service_role 密钥。这两个 VITE 配置会包含在前端构建中，因此必须启用上述行级权限。
+3. 当前个人项目已在 `cloud-config.js` 配置公开 URL 和 publishable key。如需切换项目，将 `.env.example` 复制为 `.env.local`，填入新项目 URL 和公开 anon / publishable key。URL 与 key 必须一起配置才会覆盖默认项目。切勿填入 service_role 密钥。这两个 VITE 配置会包含在前端构建中，因此必须启用上述行级权限。
 4. 重新启动开发服务或重新构建部署，在“我的小天地”登录。已有云端记录会覆盖本机记录，登录前先导出本机备份。
 5. 在另一设备访问同一 HTTPS 部署地址，登录同一账户。启动时拉取云端数据，修改时保存整份记录；请勿在两台设备同时编辑。当前为基础同步，不提供实时合并，离线修改后登录也可能被云端版本覆盖，请先备份。
 

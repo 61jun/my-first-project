@@ -1,4 +1,15 @@
 import {test,expect} from '@playwright/test';
+test('settings show login in the deployed build and report authentication errors',async({page})=>{
+ await page.route('**/auth/v1/token**',route=>route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({code:'invalid_credentials',message:'Invalid login credentials'})}));
+ await page.goto('/');
+ await page.locator('.account').click();
+ await expect(page.getByRole('button',{name:'登录并同步'})).toBeVisible();
+ await expect(page.getByText('云端服务尚未连接。',{exact:false})).toHaveCount(0);
+ await page.getByRole('textbox',{name:'邮箱',exact:true}).fill('test@example.com');
+ await page.getByLabel('密码',{exact:true}).fill('test-password');
+ await page.getByRole('button',{name:'登录并同步'}).click();
+ await expect(page.getByRole('status')).toContainText('登录失败');
+});
 test('personal records persist and remain isolated by date',async({page})=>{
  await page.goto('/');
  await page.getByRole('textbox',{name:'新任务'}).fill('练习英语二十分钟');
