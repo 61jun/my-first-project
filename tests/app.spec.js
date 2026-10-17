@@ -11,7 +11,7 @@ test('five destinations and legacy records survive the upgrade',async({page})=>{
  await page.addInitScript(x=>{if(!localStorage.getItem('daylight-v1'))localStorage.setItem('daylight-v1',JSON.stringify(x));},legacy);
  await page.goto('/');await page.locator('#date').fill('2026-10-16');await expect(page.locator('nav button')).toHaveCount(5);await expect(page.locator('.task')).toContainText('旧版待办');await expect(page.locator('.diary-snippet')).toContainText('以前写的日记');
  await nav(page,'回顾').click();await page.getByRole('button',{name:'收支报表',exact:true}).click();await expect(page.locator('.transaction')).toContainText('12.50');
- await nav(page,'今天').click();await page.getByRole('textbox',{name:'新任务'}).fill('新版本待办');await page.getByRole('button',{name:'添加',exact:true}).click();await page.reload();await expect(page.locator('.task')).toHaveCount(2);expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('daylight-v1')).version)).toBe(2);
+ await nav(page,'今天').click();await page.getByRole('textbox',{name:'新任务'}).fill('新版本待办');await page.getByRole('button',{name:'添加',exact:true}).click();await page.reload();await page.locator('#date').fill('2026-10-16');await expect(page.locator('.task')).toHaveCount(2);expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('daylight-v1')).version)).toBe(2);
 });
 
 test('cloud login errors are shown without asking for public signup',async({page})=>{
@@ -71,4 +71,35 @@ test('valid backups restore health and plans; CSV exports health, activities and
 });
 test('unreadable local data is never overwritten by subsequent edits',async({page})=>{
  await page.addInitScript(()=>{if(!localStorage.getItem('daylight-v1'))localStorage.setItem('daylight-v1','broken original data');});await page.goto('/');await page.getByLabel('新任务').fill('不能覆盖原始文件');await page.getByRole('button',{name:'添加',exact:true}).click();await page.getByRole('button',{name:'添加',exact:true}).click();expect(await page.evaluate(()=>localStorage.getItem('daylight-v1'))).toBe('broken original data');await nav(page,'我的').click();await expect(page.getByRole('button',{name:'导出原始备份'})).toBeVisible();
+});
+
+test('future wishes capture undated ideas, support editing and status filters without changing goals',async({page})=>{
+ await page.goto('/');await nav(page,'快速记录').click();await page.getByRole('button',{name:'先记下未来想做的事',exact:false}).click();
+ await page.getByLabel('想做什么',{exact:true}).fill('去海边看日出');await page.getByRole('dialog').getByRole('combobox',{name:'心愿分类',exact:true}).selectOption('travel');await page.getByLabel('想法与备注（选填）').fill('想和朋友一起去，慢慢计划。');await page.getByRole('button',{name:'收藏到未来清单'}).click();
+ await expect(page.locator('.wish-card')).toContainText('去海边看日出');await expect(page.locator('.wish-date')).toContainText('不设期限');await page.reload();
+ await nav(page,'计划').click();await page.getByRole('button',{name:'未来想做',exact:false}).click();await expect(page.locator('.wish-card')).toContainText('想和朋友一起去');
+ await page.locator('.wish-card').getByRole('button',{name:'编辑',exact:true}).click();await page.getByLabel('想做什么',{exact:true}).fill('去厦门看海');await page.getByLabel('期待日期（选填）').fill('2027-06-01');await page.getByRole('button',{name:'保存修改'}).click();await expect(page.locator('.wish-card')).toContainText('2027-06-01');
+ await page.getByRole('button',{name:'标记已实现 去厦门看海',exact:true}).click();await expect(page.locator('.wish-card')).toHaveCount(0);await page.getByRole('button',{name:'已实现',exact:true}).click();await expect(page.locator('.wish-realized')).toContainText('已实现');
+ await page.getByRole('button',{name:'恢复未实现 去厦门看海',exact:true}).click();await page.getByRole('button',{name:'未实现',exact:true}).click();await page.locator('#wish-category').selectOption('learn');await expect(page.locator('.wish-card')).toHaveCount(0);await page.locator('#wish-category').selectOption('travel');await expect(page.locator('.wish-card')).toContainText('去厦门看海');
+ await page.getByRole('button',{name:'长期目标',exact:false}).click();await expect(page.getByRole('button',{name:'新建目标',exact:false})).toBeVisible();
+});
+
+test('scheduling a wish moves one linked task and completion works in both directions',async({page})=>{
+ await page.goto('/');await nav(page,'计划').click();await page.getByRole('button',{name:'未来想做',exact:false}).click();await page.getByRole('button',{name:'新增想做的事',exact:false}).click();await page.getByLabel('想做什么',{exact:true}).fill('体验一次陶艺');await page.getByRole('button',{name:'收藏到未来清单'}).click();
+ await page.getByRole('button',{name:'安排到某天',exact:true}).click();await page.getByLabel('安排日期',{exact:true}).fill('2027-03-01');await page.getByRole('button',{name:'加入那天的待办'}).click();
+ await page.getByRole('button',{name:'调整安排',exact:true}).click();await page.getByLabel('安排日期',{exact:true}).fill('2027-03-02');await page.getByRole('button',{name:'加入那天的待办'}).click();
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('daylight-v1')).tasks.length)).toBe(1);
+ await page.getByRole('button',{name:'已安排到 2027-03-02 的待办',exact:false}).click();await expect(page.locator('#date')).toHaveValue('2027-03-02');await page.getByRole('button',{name:'完成 体验一次陶艺',exact:true}).click();
+ await nav(page,'计划').click();await page.getByRole('button',{name:'已实现',exact:true}).click();await expect(page.locator('.wish-card')).toContainText('体验一次陶艺');await page.getByRole('button',{name:'恢复未实现 体验一次陶艺',exact:true}).click();
+ await nav(page,'今天').click();await expect(page.getByRole('button',{name:'完成 体验一次陶艺',exact:true})).toBeVisible();
+ await nav(page,'计划').click();await page.getByRole('button',{name:'未实现',exact:true}).click();await page.getByRole('button',{name:'标记已实现 体验一次陶艺',exact:true}).click();await nav(page,'今天').click();await expect(page.getByRole('button',{name:'取消完成 体验一次陶艺',exact:true})).toBeVisible();
+});
+
+test('future wishes persist in cloud payloads and backup exports, restore, and fit a small phone',async({page})=>{
+ const uploaded=await mockUser(page);await page.setViewportSize({width:320,height:667});await page.goto('/');await expect(page.locator('#sync-state')).toHaveText('已同步');await nav(page,'计划').click();await page.getByRole('button',{name:'未来想做',exact:false}).click();await page.getByRole('button',{name:'新增想做的事',exact:false}).click();await page.getByLabel('想做什么',{exact:true}).fill('学会游泳');await page.getByRole('dialog').getByRole('combobox',{name:'心愿分类',exact:true}).selectOption('learn');await page.getByRole('button',{name:'收藏到未来清单'}).click();await expect(page.locator('.wish-card')).toContainText('学会游泳');
+ expect(uploaded().payload.futureWishes[0].title).toBe('学会游泳');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await nav(page,'我的').click();const event=page.waitForEvent('download');await page.getByRole('button',{name:'导出完整备份'}).click();const stream=await(await event).createReadStream();let raw='';for await(const chunk of stream)raw+=chunk;const backup=JSON.parse(raw);expect(backup.futureWishes[0].category).toBe('learn');
+ const csvEvent=page.waitForEvent('download');await page.getByRole('button',{name:'导出 CSV 表格'}).click();const csvStream=await(await csvEvent).createReadStream();let csv='';for await(const chunk of csvStream)csv+=chunk;expect(csv).toContain('未来想做');expect(csv).toContain('学会游泳');
+ await nav(page,'计划').click();page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'删除心愿 学会游泳',exact:true}).click();await expect(page.locator('.wish-card')).toHaveCount(0);
+ await nav(page,'我的').click();page.once('dialog',d=>d.accept());await page.locator('#import').setInputFiles({name:'wishes.json',mimeType:'application/json',buffer:Buffer.from(raw)});await expect(page.locator('#notice')).toContainText('备份已导入');await nav(page,'计划').click();await expect(page.locator('.wish-card')).toContainText('学会游泳');
 });

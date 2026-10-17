@@ -3,11 +3,12 @@ import './themes.css';
 import './v2.css';
 import {applyTheme,themeSelect,themeSettings,mascot,bindAppearance,navImage} from './appearance.js';
 import {installPanel,bindInstall} from './install.js';
-import {DATA_KEY,moduleNames,categories,localDate,emptyData,migrate,goalProgress,monthlyStats,recordDays,csv} from './model.js';
+import {DATA_KEY,moduleNames,categories,localDate,emptyData,migrate,goalProgress,monthlyStats,recordDays,csv,wishCategories} from './model.js';
 import * as store from './storage.js';
 import {isLocked,lockEnabled,setPin,verify,removeLock,lockNow} from './security.js';
 import {reminders,saveReminders,checkReminders} from './reminders.js';
 import {readPhoto} from './photos.js';
+import {wishesPanel,setWishDone,scheduleWish} from './wishes.js';
 
 const $=(s,root=document)=>root.querySelector(s);
 const $$=(s,root=document)=>[...root.querySelectorAll(s)];
@@ -16,7 +17,7 @@ const uid=()=>crypto.randomUUID();
 const money=n=>Number(n).toFixed(2);
 const moods=['很低落','有点累','平静','开心','超棒'],moodIcons=['🌧️','☁️','🌤️','☀️','🌈'];
 const nav=[['today','☀','今天'],['plans','⚑','计划'],['quick','＋','快速记录'],['review','▦','回顾'],['mine','♡','我的']];
-let page='today',date=localDate(),reviewTab='calendar',planFilter='all',photoDraft='',photoBusy=false,recordKind='',modalDirty=false,noticeTimer;
+let page='today',date=localDate(),reviewTab='calendar',planFilter='all',planView='goals',wishFilter='waiting',wishCategory='all',photoDraft='',photoBusy=false,recordKind='',modalDirty=false,noticeTimer;
 const current=()=>store.data;
 const health=()=>current().health[date]||{};
 function notice(message){const el=$('#notice');if(el){el.textContent=message;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>{if(el.isConnected)el.textContent='';},9000);}}
@@ -52,11 +53,15 @@ function today(){
  return hero+summary+`<div class="grid">${cards}</div>`;
 }
 function plans(){
+ const switcher=`<div class="plan-switch" role="group" aria-label="计划内容"><button data-plan-view="goals" aria-pressed="${planView==='goals'}" class="${planView==='goals'?'active':''}">⚑ 长期目标</button><button data-plan-view="wishes" aria-pressed="${planView==='wishes'}" class="${planView==='wishes'?'active':''}">✧ 未来想做<span>${current().futureWishes.filter(w=>!w.done).length}</span></button></div>`;
+ return switcher+(planView==='wishes'?wishesPanel(current(),wishFilter,wishCategory):longTermPlans());
+}
+function longTermPlans(){
  const d=current(),goals=d.goals.filter(g=>planFilter==='all'||g.category===planFilter);
  return `<div class="page-toolbar"><div><h2>慢慢来，也会走很远。</h2><p class="muted">把长期目标拆成一次次可完成的小行动。</p></div><button class="primary" id="new-goal">＋ 新建目标</button></div><div class="filter-tabs" role="group" aria-label="目标分类">${[['all','全部'],...Object.entries(categories)].map(([id,title])=>`<button data-goal-filter="${id}" aria-pressed="${planFilter===id}" class="${planFilter===id?'active':''}">${title}</button>`).join('')}</div><div class="goal-grid">${goals.map(g=>{const value=goalProgress(d,g),percent=Math.min(100,Math.round(value/g.target*100));return `<section class="goal-card"><div class="section-title"><span class="category-pill">${categories[g.category]}</span><button class="delete" data-delete="goals:${g.id}" aria-label="删除目标 ${esc(g.title)}">×</button></div><h2>${esc(g.title)}</h2><p class="muted">${g.deadline?'目标日期 '+esc(g.deadline):'按照自己的节奏来'}</p><div class="goal-numbers"><strong>${value}<small> / ${g.target} ${esc(g.unit)}</small></strong><span>${percent}%</span></div><progress value="${Math.min(value,g.target)}" max="${g.target}" aria-label="${esc(g.title)}进度"></progress><button class="secondary" data-goal-log="${g.id}">${percent>=100?'再记录一次 ✧':'记录一次进展 ＋'}</button></section>`;}).join('')||card('一切从一个小目标开始',empty('例如：本月学英语 300 分钟，或运动 12 次。'))}</div>`;
 }
 const quickItems=[['money','◎','记一笔账','收入支出，都心中有数'],['meal','♧','拍餐食','记住好好吃饭的每一餐'],['diary','▤','写日记','把今天写给未来的自己'],['mood','♡','记心情','给此刻的感受一个位置'],['exercise','↗','记录运动','每一次动起来都算数'],['study','Aa','记录学习','英语和学习，一点点积累']];
-function quickChooser(){return `<div class="quick-intro"><span>CAPTURE A LITTLE MOMENT</span><h2>想记点什么？</h2><p>不必等到一天结束，现在就留下一小笔。</p></div><div class="quick-grid">${quickItems.map(([kind,icon,title,desc])=>`<button data-record="${kind}" class="quick-card"><span class="quick-icon">${icon}</span><strong>${title}</strong><small>${desc}</small><b>↗</b></button>`).join('')}</div><div class="quick-health"><button class="secondary" data-record="water">◉ 饮水</button><button class="secondary" data-record="weight">⚖ 体重</button><button class="secondary" data-record="sleep">☾ 睡眠</button></div>`;}
+function quickChooser(){return `<div class="quick-intro"><span>CAPTURE A LITTLE MOMENT</span><h2>想记点什么？</h2><p>不必等到一天结束，现在就留下一小笔。</p></div><div class="quick-grid">${quickItems.map(([kind,icon,title,desc])=>`<button data-record="${kind}" class="quick-card"><span class="quick-icon">${icon}</span><strong>${title}</strong><small>${desc}</small><b>↗</b></button>`).join('')}</div><button class="wish-quick-link secondary" data-new-wish>✧ 先记下未来想做的事 ＋</button><div class="quick-health"><button class="secondary" data-record="water">◉ 饮水</button><button class="secondary" data-record="weight">⚖ 体重</button><button class="secondary" data-record="sleep">☾ 睡眠</button></div>`;}
 function monthSelector(){return `<label class="month-picker">回顾月份<input type="month" id="review-month" value="${date.slice(0,7)}"></label>`;}
 function review(){
  const stats=monthlyStats(current(),date.slice(0,7));
@@ -90,13 +95,21 @@ function bind(){
  if($('#back-today'))$('#back-today').onclick=()=>{date=localDate();render();};
  $$('[data-date]').forEach(b=>b.onclick=()=>{date=b.dataset.date;render();});
  $$('[data-record]').forEach(b=>b.onclick=()=>openRecord(b.dataset.record,{slot:b.dataset.slot}));
- $$('[data-task]').forEach(b=>b.onclick=()=>commit(d=>{const t=d.tasks.find(t=>t.id===b.dataset.task);t.done=!t.done;}));
+ $$('[data-task]').forEach(b=>b.onclick=()=>commit(d=>{const t=d.tasks.find(t=>t.id===b.dataset.task);t.done=!t.done;d.futureWishes.filter(w=>w.taskId===t.id).forEach(w=>setWishDone(d,w.id,t.done));}));
  $$('[data-habit]').forEach(b=>b.onclick=()=>commit(d=>{d.checks[date]??={};d.checks[date][b.dataset.habit]=!d.checks[date][b.dataset.habit];}));
  $$('[data-mood]').forEach(b=>b.onclick=()=>commit(d=>{d.journals[date]={...d.journals[date],mood:Number(b.dataset.mood)};}));
  $$('[data-water]').forEach(b=>b.onclick=()=>commit(d=>{d.health[date]={...health(),water:(health().water||0)+Number(b.dataset.water)};}));
- $$('[data-delete]').forEach(b=>b.onclick=()=>{const [kind,id]=b.dataset.delete.split(':');if(!confirm(kind==='goals'?'删除这个目标？已记录的学习和运动仍会保留。':kind==='habits'?'删除这个习惯及它的打卡记录？':'删除这条记录？'))return;commit(d=>{d[kind]=d[kind].filter(e=>e.id!==id);if(kind==='habits')Object.values(d.checks).forEach(c=>delete c[id]);});});
+ $$('[data-delete]').forEach(b=>b.onclick=()=>{const [kind,id]=b.dataset.delete.split(':');if(!confirm(kind==='goals'?'删除这个目标？已记录的学习和运动仍会保留。':kind==='habits'?'删除这个习惯及它的打卡记录？':kind==='futureWishes'?'删除这件想做的事？已安排的待办仍会保留。':'删除这条记录？'))return;commit(d=>{d[kind]=d[kind].filter(e=>e.id!==id);if(kind==='habits')Object.values(d.checks).forEach(c=>delete c[id]);if(kind==='tasks')d.futureWishes.filter(w=>w.taskId===id).forEach(w=>delete w.taskId);});});
  onForm('task-form',f=>{const text=f.get('text').trim();if(text)return commit(d=>d.tasks.push({id:uid(),text,date,done:false}));});
  if($('#new-goal'))$('#new-goal').onclick=openGoal;
+ $$('[data-plan-view]').forEach(b=>b.onclick=()=>{planView=b.dataset.planView;render();});
+ $$('[data-new-wish]').forEach(b=>b.onclick=()=>openWish());
+ $$('[data-edit-wish]').forEach(b=>b.onclick=()=>openWish(b.dataset.editWish));
+ $$('[data-wish-filter]').forEach(b=>b.onclick=()=>{wishFilter=b.dataset.wishFilter;render();});
+ if($('#wish-category'))$('#wish-category').onchange=e=>{wishCategory=e.target.value;render();};
+ $$('[data-toggle-wish]').forEach(b=>b.onclick=()=>commit(d=>{const wish=d.futureWishes.find(w=>w.id===b.dataset.toggleWish);setWishDone(d,wish.id,!wish.done);}));
+ $$('[data-schedule-wish]').forEach(b=>b.onclick=()=>openWishSchedule(b.dataset.scheduleWish));
+ $$('[data-wish-task-date]').forEach(b=>b.onclick=()=>{date=b.dataset.wishTaskDate;navigate('today');});
  $$('[data-goal-filter]').forEach(b=>b.onclick=()=>{planFilter=b.dataset.goalFilter;render();});
  $$('[data-goal-log]').forEach(b=>b.onclick=()=>{const g=current().goals.find(g=>g.id===b.dataset.goalLog);openRecord(g.category==='exercise'?'exercise':'study',{goalId:g.id,category:g.category});});
  $$('[data-review]').forEach(b=>b.onclick=()=>{reviewTab=b.dataset.review;render();});
@@ -156,6 +169,24 @@ function openRecord(kind,options={}){
   });
   if(ok){date=recordDate;render();notice('已记录，把今天好好收藏。');}else if($('#record-dialog').open)$('#dialog-status').textContent='未能保存，请减少照片或先导出备份。';
  },$('#record-dialog'));
+}
+function openWish(id){
+ const wish=id?current().futureWishes.find(w=>w.id===id):null;
+ openModal(wish?'编辑未来想做的事':'收下一个未来想做的事',`<form id="wish-form" class="record-form">${label('想做什么',input('title','text',`required maxlength="200" value="${esc(wish?.title||'')}" placeholder="例如：去海边看日出、学会游泳"`))}${label('心愿分类',select('category',Object.entries(wishCategories),wish?.category||'experience'))}${label('期待日期（选填）',input('targetDate','date',`value="${wish?.targetDate||''}"`))}${label('想法与备注（选填）',`<textarea name="notes" rows="4" maxlength="4000" placeholder="为什么想做？想和谁一起？把灵感先留下来……">${esc(wish?.notes||'')}</textarea>`)}<p class="muted">可以先不设日期。决定行动时，再安排到某天的待办。</p>${formFooter(wish?'保存修改':'收藏到未来清单')}</form>`);
+ onForm('wish-form',async f=>{
+  const title=f.get('title').trim();if(!title)throw Error('写下一件你想做的事吧。');
+  const ok=await commit(d=>{
+   const fields={title,category:f.get('category'),targetDate:f.get('targetDate'),notes:f.get('notes').trim()};
+   if(wish){const entry=d.futureWishes.find(w=>w.id===wish.id);Object.assign(entry,fields);const task=d.tasks.find(t=>t.id===entry.taskId);if(task)task.text=title;}
+   else d.futureWishes.push({id:uid(),...fields,done:false,createdDate:localDate(),completedDate:''});
+  });
+  if(ok){planView='wishes';wishFilter=wish?.done?'done':'waiting';wishCategory='all';navigate('plans');notice(wish?'想法已更新。':'已收藏。未来有空的时候，再慢慢实现。');}
+ },$('#record-dialog'));
+}
+function openWishSchedule(id){
+ const wish=current().futureWishes.find(w=>w.id===id),task=current().tasks.find(t=>t.id===wish.taskId);
+ openModal('把期待安排到某一天',`<form id="wish-schedule-form" class="record-form"><p class="wish-dialog-title">${esc(wish.title)}</p>${label('安排日期',input('date','date',`required value="${task?.date||wish.targetDate||localDate()}"`))}<p class="muted">会在所选日期的“今天”中加入一条待办。再次调整日期会移动同一条待办，不会重复添加。</p>${formFooter('加入那天的待办')}</form>`);
+ onForm('wish-schedule-form',async f=>{const day=f.get('date');if(await commit(d=>scheduleWish(d,id,day)))notice(`已加入 ${day} 的待办，完成后这件心愿也会标记为已实现。`);},$('#record-dialog'));
 }
 function openGoal(){
  openModal('种下一个小目标',`<form id="goal-form" class="record-form">${label('目标名称',input('title','text','required maxlength="100" placeholder="例如：这个月读完一本书"'))}${label('目标分类',select('category',Object.entries(categories),'study'))}<div class="form-two">${label('目标数量',input('target','number','required min="1" max="1000000" step="1" placeholder="300"'))}${label('单位',select('unit',[['分钟','分钟'],['次','次']],'分钟'))}</div>${label('目标日期（选填）',input('deadline','date'))}${formFooter('保存目标')}</form>`);
